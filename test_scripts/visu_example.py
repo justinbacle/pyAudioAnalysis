@@ -1,4 +1,5 @@
 import numpy as np
+import pathlib
 from pyAudioAnalysis import audioBasicIO
 from pyAudioAnalysis import ShortTermFeatures
 from pyAudioAnalysis import audioAnalysis
@@ -14,6 +15,11 @@ audioFile = "C:/Users/jbacle/Music/Michael Jackson - Beat It (Official Video).mp
 audioFileShort = "C:/Users/jbacle/Music/Michael Jackson - Beat It (Official Video) Extract.mp3"
 audioFolder = "C:/Users/jbacle/Music"
 audioFileTest = "//titan/1000-RnD/030-AUDIO/20-Evaluation_Protocol/20-Playlists/Objective/p50_f.wav"
+
+beat_orig = "C:/Users/jbacle/Music/Michael Jackson - Beat It (Official Video) Extract.mp3"
+# beat_cover = "C:/Users/jbacle/Music/Fall Out Boy - Beat It (MTV Version) (Official Music Video) ft. John Mayer Extract.mp3"
+# beat_cover_tempo = "C:/Users/jbacle/Music/Fall Out Boy - Beat It (MTV Version) (Official Music Video) ft. John Mayer Extract Tempo.mp3"
+beat_live = "C:/Users/jbacle/Music/Michael Jackson - Beat It - Live Auckland 1996 - HD Extract.mp3"
 
 
 def featureExtract(x, f):
@@ -37,9 +43,15 @@ def featureExtract(x, f):
 # Chromagraph
 def chroma(x, f):
     # audioAnalysis.fileChromagramWrapper(audioPath)
-    frameSize = 0.1
-    specgram, TimeAxis, FreqAxis = ShortTermFeatures.chromagram(
-        x, fs, round(fs * frameSize), round(fs * frameSize), True)
+    frameSize = 0.2
+    specgram, TimeAxis, FreqAxis, fig = ShortTermFeatures.chromagram(
+        signal=x,
+        sampling_rate=fs,
+        window=round(fs * frameSize),  # the short-term window size (in samples)
+        step=round(fs * frameSize/2),  # the short-term window step (in samples)
+        plot=True,
+        show_progress=True)
+    return fig
 
 
 def detect_peaks(image):
@@ -186,7 +198,7 @@ def fingerprint(channel_samples: list,
                 wsize: int = DEFAULT_WINDOW_SIZE,
                 wratio: float = DEFAULT_OVERLAP_RATIO,
                 # fan_value: int = DEFAULT_FAN_VALUE,
-                amp_min: int = DEFAULT_AMP_MIN*4):
+                amp_min: int = DEFAULT_AMP_MIN*5.5):
     """
     FFT the channel, log transform output, find local maxima, then return locally sensitive hashes.
     :param channel_samples: channel samples to fingerprint.
@@ -212,13 +224,13 @@ def fingerprint(channel_samples: list,
 
     local_maxima_scale = []
     for _ in local_maxima:
-        local_maxima_scale.append((f[_[0]], t[_[1]]))
+        local_maxima_scale.append((f[_[0]], t[_[1]-2]))
 
     return local_maxima_scale
 
 
-def plotSpectro(S, t, f):
-    fig, ax = plt.subplots(dpi=200, figsize=(8, 4), constrained_layout=True)
+def plotSpectro(S, t, f, ax):
+    # fig, ax = plt.subplots(dpi=200, figsize=(8, 4), constrained_layout=True)
     ax.set_yscale('log')
     # ax.yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%d'))
     ax.set_ylim([80.0, 20000.0])
@@ -233,18 +245,43 @@ def plotSpectro(S, t, f):
     return ax
 
 
-def spectro(x, f):
+def spectro(x, fs, ax, color='k'):
     frameSize = .1
     S, t, f = ShortTermFeatures.spectrogram(
         x, fs, round(fs * frameSize), round(fs * frameSize),
         plot=False,
         show_progress=True
         )
-    ax = plotSpectro(S, t, f)
+    ax = plotSpectro(S, t, f, ax)
     fingers = fingerprint(x, fs)
     ax.plot([_[1] for _ in fingers], [_[0] for _ in fingers], 'o',
-            markerfacecolor="None", markeredgecolor='blue', markeredgewidth=1)
-    plt.show()
+            markerfacecolor="None", markeredgecolor=color, markeredgewidth=1)
+    ax.set_ylabel("Frequency (Hz)")
+    ax.set_xlabel("Time (s)")
+    return plt.gcf()
+
+
+def plot_fingerprints(ax, fp1, fp2):
+    ax.plot([_[1] for _ in fp1], [_[0] for _ in fp1], '+',
+            markerfacecolor="None", markeredgecolor='b', markeredgewidth=1)
+    ax.plot([_[1] for _ in fp2], [_[0] for _ in fp2], 'x',
+            markerfacecolor="None", markeredgecolor='r', markeredgewidth=1)
+    ax.set_ylabel("Frequency (Hz)")
+    ax.set_xlabel("Time (s)")
+    ax.set_yscale('log')
+    ax.set_ylim([80.0, 20000.0])
+
+
+def spectro_fingerprint(x, fs, ax, color='k', marker='o'):
+    fingers = fingerprint(x, fs)
+    ax.plot([_[1] for _ in fingers], [_[0] for _ in fingers], marker,
+            markerfacecolor="None", markeredgecolor=color, markeredgewidth=1)
+    ax.set_ylabel("Frequency (Hz)")
+    ax.set_xlabel("Time (s)")
+    ax.set_yscale('log')
+    ax.set_ylim([80.0, 20000.0])
+
+    return fingers
 
 
 def featureVisu(folder):
@@ -256,9 +293,33 @@ def thumbnailing(file):
 
 
 if __name__ == "__main__":
-    fs, x = audioBasicIO.read_audio_file(audioFileTest)
-    x = audioBasicIO.stereo_to_mono(x)
-    # chroma(x, fs)
+    fs_orig, x_orig = audioBasicIO.read_audio_file(beat_orig)
+    x_orig = audioBasicIO.stereo_to_mono(x_orig)
+
+    fig, axList = plt.subplots(3, 2, squeeze=True)
+    fig.tight_layout()
+
+    spectro(x_orig, fs_orig, axList[0, 0], color='blue')
+    axList[0, 0].set_title("Michael Jackson - Beat It (1982 Music Clip)")
+
+    fs_live, x_live = audioBasicIO.read_audio_file(beat_live)
+    x_live = audioBasicIO.stereo_to_mono(x_live)
+    spectro(x_live, fs_live, axList[0, 1], color='red')
+    axList[0, 1].set_title("Michael Jackson - Beat It (Live @Auckland 1996)")
+
+    fp_orig = spectro_fingerprint(x_orig, fs_orig, axList[1, 0], color='b', marker='+')
+    fp_live = spectro_fingerprint(x_live, fs_live, axList[1, 1], color='r', marker='x')
+
+    gs = axList[2, 0].get_gridspec()
+    axList[2, 1].remove()
+    axList[2, 0].remove()
+    axbig = fig.add_subplot(gs[2, :])
+
+    plot_fingerprints(axbig, fp_orig, fp_live)
+
+    plt.show()
+
+    # fig = chroma(x, fs)
+    # fig.savefig(f"Chroma_{pathlib.Path(beat_orig).name}.png")
     # featureVisu(audioFolder)
     # thumbnailing(audioFile)
-    spectro(x, fs)
